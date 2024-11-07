@@ -19,7 +19,6 @@ main :: proc() {
   }
 
   args := os.args[1:]
-  defer delete(args)
 
   cargs := make([]cstring, len(args))
   defer delete(cargs)
