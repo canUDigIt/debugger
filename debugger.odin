@@ -36,7 +36,7 @@ debugger_run :: proc(d: ^debug_context) {
 }
 
 debugger_handle_command :: proc(d: ^debug_context, line: cstring) {
-  args := strings.split(string(line), " ")
+  args := strings.fields(string(line))
   command := args[0]
 
   switch {

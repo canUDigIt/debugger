@@ -1,7 +1,8 @@
 package test
 
-import c "core:c/libc"
-
 main :: proc() {
-  c.printf("Hello\n")
+  a := 3
+  b := 2
+  c := a + b
+  a = 4
 }
