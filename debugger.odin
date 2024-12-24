@@ -1,5 +1,6 @@
 package debugger
 
+import c "core:c/libc"
 import "core:os"
 import "core:fmt"
 import "core:sys/linux"
@@ -18,20 +19,20 @@ debugger_run :: proc(d: ^debug_context) {
   linux.waitpid(d.pid, &wait_status, nil, &rusage)
   
   for {
-    buf := linenoise("minigdb> ")
+    buf := readline("minigdb> ")
     if buf == nil {
       break
     }
 
     line := cstring(buf)
-    defer linenoiseFree(buf)
+    defer c.free(buf)
 
     if strings.has_prefix(string(line), "quit") {
       break
     }
 
     debugger_handle_command(d,line)
-    linenoiseHistoryAdd(line)
+    add_history(line)
   }
 }
 

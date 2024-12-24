@@ -1,15 +1,21 @@
 package debugger
 
+import c "core:c/libc"
 import "core:os"
 import "core:fmt"
 import "core:sys/linux"
 import "core:strings"
 
-foreign import liblinenoise "./liblinenoise.a"
-foreign liblinenoise {
-  linenoise :: proc(prompt: cstring) -> [^]u8 ---
-  linenoiseHistoryAdd :: proc(line: cstring) -> i32 ---
-  linenoiseFree :: proc(ptr: rawptr) ---
+history_entry :: struct {
+  line: cstring,
+  data: rawptr
+}
+foreign import libedit "system:libedit.so"
+foreign libedit {
+  readline :: proc "c" (prompt: cstring) -> [^]u8 ---
+  add_history :: proc "c" (line: cstring) -> c.int ---
+  history_list :: proc "c" () -> [^]^history_entry ---
+  history_length: c.int
 }
 
 main :: proc() {
