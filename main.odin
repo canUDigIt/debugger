@@ -6,6 +6,7 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:sys/linux"
+import "./bdb"
 
 history_entry :: struct {
   line: cstring,
@@ -19,81 +20,6 @@ foreign libedit {
   history_length: c.int
 }
 
-attach :: proc(args: []string) -> linux.Pid {
-  pid: linux.Pid = 0
-  if len(args) == 3 && args[1] == "-p" {
-    // Passed in PID
-    id, ok := strconv.parse_int(args[2])
-    if !ok {
-      log.error("Invalid pid")
-      return -1
-    }
-    pid = linux.Pid(id)
-
-    if err := linux.ptrace_attach(.ATTACH, pid); err != .NONE {
-      log.error("Couldn't attach", err)
-      return -1
-    }
-
-  } else {
-    // Passed in program name
-    if id, err := linux.fork(); err == .NONE {
-      switch id {
-      case -1:
-        log.error("Fork failed with error:", err)
-        return -1
-      case 0:
-        // We're in the child process
-        // Execute debuggee
-
-        if err := linux.ptrace_traceme(.TRACEME); err != .NONE {
-          log.error("Tracing failed", err)
-          return -1
-        }
-
-        cargs := []cstring{strings.unsafe_string_to_cstring(args[1]), nil}
-        if err := linux.execve(cargs[0], raw_data(cargs[1:]), nil); err != .NONE {
-          log.error("Exec failed", err)
-          return -1
-        }
-      case:
-        pid = id
-      }
-    } else {
-      log.error("Fork failed with error:", err)
-    }
-  }
-  return pid
-}
-
-handle_command :: proc(pid: linux.Pid, line: string) {
-  args := strings.split(line, " ")
-  cmd := args[0]
-
-  if strings.has_prefix(cmd, "continue") {
-    resume(pid)
-    wait_on_signal(pid)
-  } else {
-    log.error("Unknown command")
-  }
-}
-
-resume :: proc(pid: linux.Pid) {
-  if err := linux.ptrace_cont(.CONT, pid, .SIGCONT); err != .NONE {
-    log.error("Couldn't continue")
-    linux.exit(1)
-  }
-}
-wait_on_signal :: proc(pid: linux.Pid) {
-  wait_status: u32
-  options: linux.Wait_Options
-  rusage: linux.RUsage
-  if _, err := linux.waitpid(pid, &wait_status, options, &rusage); err != .NONE {
-    log.error("waitpid failed", err)
-    linux.exit(1)
-  }
-}
-
 main :: proc() {
   context.logger = log.create_console_logger()
 
@@ -102,15 +28,11 @@ main :: proc() {
     linux.exit(1)
   }
 
-  pid := attach(os.args[:])
+  p := attach(os.args[:])
+  main_loop(&p)
+}
 
-  wait_status: u32
-  options: linux.Wait_Options
-  rusage: linux.RUsage
-  if _, err := linux.waitpid(pid, &wait_status, options, &rusage); err != .NONE {
-    log.error("waitpid failed", err)
-  }
-  
+main_loop :: proc(p: ^bdb.process) {
   for {
     line := readline("bdb> ")
     if line == nil {
@@ -129,7 +51,51 @@ main :: proc() {
     }
 
     if line_str != "" {
-      handle_command(pid, string(line_str))
+      handle_command(p, string(line_str))
     }
+  }
+}
+
+attach :: proc(args: []string) -> bdb.process {
+  pid: linux.Pid = 0
+  if len(args) == 3 && args[1] == "-p" {
+    // Passed in PID
+    id, ok := strconv.parse_int(args[2])
+    if !ok {
+      log.error("Invalid pid")
+      return {}
+    }
+    pid = linux.Pid(id)
+
+    return bdb.attach(pid)
+  } else {
+    // Passed in program name
+    return bdb.launch(args[1])
+  }
+}
+
+handle_command :: proc(p: ^bdb.process, line: string) {
+  args := strings.split(line, " ")
+  cmd := args[0]
+
+  if strings.has_prefix(cmd, "continue") {
+    bdb.resume(p)
+    reason := bdb.wait_on_signal(p)
+    print_stop_reason(p^, reason)
+  } else {
+    log.error("Unknown command")
+  }
+}
+
+print_stop_reason :: proc(p: bdb.process, r: bdb.stop_reason) {
+  switch r.reason {
+    case .exited:
+      log.infof("Process %v exited with status %v", p.id, r.info)
+    case .terminated:
+      log.infof("Process %v terminated with signal %v", p.id, r.info)
+    case .stopped:
+      log.infof("Process %v stopped with signal %v", p.id, r.info)
+    case .running:
+      log.errorf("Printing stop reason for running process %v", p.id)
   }
 }
