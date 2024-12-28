@@ -1,4 +1,4 @@
-package bdb
+package odb
 
 import "core:log"
 import "core:strings"

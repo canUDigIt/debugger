@@ -6,7 +6,7 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:sys/linux"
-import "./bdb"
+import "./odb"
 
 history_entry :: struct {
   line: cstring,
@@ -32,9 +32,9 @@ main :: proc() {
   main_loop(&p)
 }
 
-main_loop :: proc(p: ^bdb.process) {
+main_loop :: proc(p: ^odb.process) {
   for {
-    line := readline("bdb> ")
+    line := readline("odb> ")
     if line == nil {
       break
     }
@@ -56,7 +56,7 @@ main_loop :: proc(p: ^bdb.process) {
   }
 }
 
-attach :: proc(args: []string) -> bdb.process {
+attach :: proc(args: []string) -> odb.process {
   pid: linux.Pid = 0
   if len(args) == 3 && args[1] == "-p" {
     // Passed in PID
@@ -67,27 +67,27 @@ attach :: proc(args: []string) -> bdb.process {
     }
     pid = linux.Pid(id)
 
-    return bdb.attach(pid)
+    return odb.attach(pid)
   } else {
     // Passed in program name
-    return bdb.launch(args[1])
+    return odb.launch(args[1])
   }
 }
 
-handle_command :: proc(p: ^bdb.process, line: string) {
+handle_command :: proc(p: ^odb.process, line: string) {
   args := strings.split(line, " ")
   cmd := args[0]
 
   if strings.has_prefix(cmd, "continue") {
-    bdb.resume(p)
-    reason := bdb.wait_on_signal(p)
+    odb.resume(p)
+    reason := odb.wait_on_signal(p)
     print_stop_reason(p^, reason)
   } else {
     log.error("Unknown command")
   }
 }
 
-print_stop_reason :: proc(p: bdb.process, r: bdb.stop_reason) {
+print_stop_reason :: proc(p: odb.process, r: odb.stop_reason) {
   switch r.reason {
     case .exited:
       log.infof("Process %v exited with status %v", p.id, r.info)
