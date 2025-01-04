@@ -6,8 +6,10 @@ import "core:testing"
 
 @(test)
 process_launch_success :: proc(t: ^testing.T) {
-  p := launch("/home/tracyb/workspaces/debugger/test")
+  p, err := launch("/home/tracyb/workspaces/debugger/test")
   defer stop_process(p)
+
+  testing.expect(t, err == .None)
   testing.expect(t, process_exists(p.id))
 }
 
@@ -18,5 +20,6 @@ process_exists :: proc(pid: posix.pid_t) -> bool {
 
 @(test)
 process_launch_no_such_program :: proc(t: ^testing.T) {
-  // p := launch("you_do_not_have_to_be_good")
+  p, err := launch("you_do_not_have_to_be_good")
+  testing.expect(t, err == .Child_Failed)
 }

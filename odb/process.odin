@@ -20,21 +20,27 @@ process_state :: enum {
   terminated,
 }
 
+process_error :: enum {
+  None,
+  Fork_Failed,
+  Child_Failed,
+}
+
 exit_with_error :: proc(p: ^pipe, prefix: string) {
   message := fmt.aprintf("%s: %s", prefix, libc.strerror(libc.errno()^))
   pipe_write(p^, transmute([]u8)message)
+  delete(message)
   posix.exit(libc.EXIT_FAILURE)
 }
 
-launch :: proc(path: string) -> process {
+launch :: proc(path: string) -> (process, process_error) {
   channel: pipe
   pipe_create(&channel, true)
 
   pid := posix.fork()
   switch pid {
   case -1: 
-    log.error("Fork failed.")
-    posix.exit(libc.EXIT_FAILURE)
+    return {}, .Fork_Failed
   case 0:
     // child process
     pipe_close_read(&channel)
@@ -53,12 +59,13 @@ launch :: proc(path: string) -> process {
     // parent process
     pipe_close_write(&channel)
     data := pipe_read(channel)
+    defer delete(data)
     pipe_close_read(&channel)
 
     if len(data) > 0 {
       posix.waitpid(pid, nil, nil)
       log.error(string(data))
-      posix.exit(libc.EXIT_FAILURE)
+      return {}, .Child_Failed
     }
   }
 
@@ -68,7 +75,7 @@ launch :: proc(path: string) -> process {
   }
   wait_on_signal(&p)
 
-  return p
+  return p, .None
 }
 
 attach :: proc(pid: posix.pid_t) -> process {
