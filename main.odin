@@ -5,7 +5,7 @@ import "core:log"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "core:sys/linux"
+import "core:sys/posix"
 import "./odb"
 
 history_entry :: struct {
@@ -25,10 +25,12 @@ main :: proc() {
 
   if len(os.args) < 2 {
     log.error("Pass in a program to debug.")
-    linux.exit(1)
+    posix.exit(1)
   }
 
   p := attach(os.args[:])
+  defer odb.stop_process(p)
+
   main_loop(&p)
 }
 
@@ -57,7 +59,6 @@ main_loop :: proc(p: ^odb.process) {
 }
 
 attach :: proc(args: []string) -> odb.process {
-  pid: linux.Pid = 0
   if len(args) == 3 && args[1] == "-p" {
     // Passed in PID
     id, ok := strconv.parse_int(args[2])
@@ -65,9 +66,8 @@ attach :: proc(args: []string) -> odb.process {
       log.error("Invalid pid")
       return {}
     }
-    pid = linux.Pid(id)
 
-    return odb.attach(pid)
+    return odb.attach(posix.pid_t(id))
   } else {
     // Passed in program name
     return odb.launch(args[1])
