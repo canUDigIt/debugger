@@ -2,7 +2,6 @@ package odb
 
 import "core:c/libc"
 import "core:fmt"
-import "core:log"
 import "core:strings"
 import "core:sys/linux"
 import "core:sys/posix"
@@ -67,7 +66,7 @@ launch :: proc(path: string, debug: bool = true) -> (process, process_error) {
 
     if len(data) > 0 {
       posix.waitpid(pid, nil, nil)
-      log.error(string(data))
+      fmt.eprintln(string(data))
       return {}, .Child_Failed
     }
   }
@@ -127,7 +126,7 @@ stop_process :: proc(p: process) {
 
 resume :: proc(p: ^process) {
   if err := linux.ptrace_cont(.CONT, linux.Pid(p.id), .SIGCONT); err != nil {
-    log.error("Couldn't resume")
+    fmt.eprintln("Couldn't resume")
     return
   }
   p.state = .running
@@ -136,7 +135,7 @@ resume :: proc(p: ^process) {
 wait_on_signal :: proc(p: ^process) -> stop_reason {
   status: i32
   if posix.waitpid(p.id, &status, nil) == -1 {
-    log.error("waitpid failed")
+    fmt.eprintln("waitpid failed")
     return {}
   }
 

@@ -1,7 +1,7 @@
 package debugger
 
 import c "core:c/libc"
-import "core:log"
+import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
@@ -21,10 +21,8 @@ foreign libedit {
 }
 
 main :: proc() {
-  context.logger = log.create_console_logger()
-
   if len(os.args) < 2 {
-    log.error("Pass in a program to debug.")
+    fmt.eprintln("Pass in a program to debug.")
     posix.exit(1)
   }
 
@@ -63,16 +61,16 @@ attach :: proc(args: []string) -> odb.process {
     // Passed in PID
     id, ok := strconv.parse_int(args[2])
     if !ok {
-      log.error("Invalid pid")
+      fmt.eprintln("Invalid pid")
       return {}
     }
 
-    return odb.attach(posix.pid_t(id))
+    return odb.attach(posix.pid_t(id)) or_else odb.process{}
   } else {
     // Passed in program name
     process, err := odb.launch(args[1])
     if err != .None {
-      log.error("Failed to launch ", args[1], err)
+      fmt.eprintln("Failed to launch ", args[1], err)
       return {}
     }
     return process
@@ -88,19 +86,19 @@ handle_command :: proc(p: ^odb.process, line: string) {
     reason := odb.wait_on_signal(p)
     print_stop_reason(p^, reason)
   } else {
-    log.error("Unknown command")
+    fmt.eprintln("Unknown command")
   }
 }
 
 print_stop_reason :: proc(p: odb.process, r: odb.stop_reason) {
   switch r.reason {
     case .exited:
-      log.infof("Process %v exited with status %v", p.id, r.info)
+      fmt.eprintfln("Process %v exited with status %v", p.id, r.info)
     case .terminated:
-      log.infof("Process %v terminated with signal %v", p.id, r.info)
+      fmt.eprintfln("Process %v terminated with signal %v", p.id, r.info)
     case .stopped:
-      log.infof("Process %v stopped with signal %v", p.id, r.info)
+      fmt.eprintfln("Process %v stopped with signal %v", p.id, r.info)
     case .running:
-      log.errorf("Printing stop reason for running process %v", p.id)
+      fmt.eprintfln("Printing stop reason for running process %v", p.id)
   }
 }

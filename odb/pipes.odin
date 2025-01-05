@@ -1,6 +1,6 @@
 package odb
 
-import "core:log"
+import "core:fmt"
 import "core:slice"
 import "core:sys/posix"
 
@@ -10,7 +10,7 @@ write_fd :: 1
 
 pipe_create :: proc(p: ^pipe, close_on_exec: bool) {
   if posix.pipe(p) == .FAIL {
-    log.error("Failed to create pipe: ", posix.strerror(posix.errno()))
+    fmt.eprintln("Failed to create pipe: ", posix.strerror(posix.errno()))
   }
 
   if close_on_exec {
