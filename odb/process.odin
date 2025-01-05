@@ -9,8 +9,9 @@ import "core:sys/posix"
 
 process :: struct {
   id: posix.pid_t,
-  term_on_end: bool,
   state: process_state,
+  term_on_end: bool,
+  attached: bool,
 }
 
 process_state :: enum {
@@ -24,6 +25,8 @@ process_error :: enum {
   None,
   Fork_Failed,
   Child_Failed,
+  Zero_Pid,
+  Attach_Failed,
 }
 
 exit_with_error :: proc(p: ^pipe, prefix: string) {
@@ -33,7 +36,7 @@ exit_with_error :: proc(p: ^pipe, prefix: string) {
   posix.exit(libc.EXIT_FAILURE)
 }
 
-launch :: proc(path: string) -> (process, process_error) {
+launch :: proc(path: string, debug: bool = true) -> (process, process_error) {
   channel: pipe
   pipe_create(&channel, true)
 
@@ -45,7 +48,7 @@ launch :: proc(path: string) -> (process, process_error) {
     // child process
     pipe_close_read(&channel)
 
-    if err := linux.ptrace_traceme(.TRACEME); err != .NONE {
+    if debug && linux.ptrace_traceme(.TRACEME) != .NONE {
       exit_with_error(&channel, "Tracing failed")
     }
 
@@ -72,42 +75,48 @@ launch :: proc(path: string) -> (process, process_error) {
   p := process {
     id = pid,
     term_on_end = true,
+    attached = debug,
+  }
+
+  if debug {
+    wait_on_signal(&p)
+  }
+
+  return p, .None
+}
+
+attach :: proc(pid: posix.pid_t) -> (process, process_error) {
+  if pid == 0 {
+    return {}, .Zero_Pid
+  }
+
+  if err := linux.ptrace_attach(.ATTACH, linux.Pid(pid)); err != .NONE {
+    fmt.eprintln("Couldn't attach", err)
+    return {}, .Attach_Failed
+  }
+
+  p := process {
+    id = pid,
+    term_on_end = false,
+    attached = true,
   }
   wait_on_signal(&p)
 
   return p, .None
 }
 
-attach :: proc(pid: posix.pid_t) -> process {
-  if pid == 0 {
-    log.error("Zero is not a valid PID to attach to.")
-    return {}
-  }
-
-  if err := linux.ptrace_attach(.ATTACH, linux.Pid(pid)); err != .NONE {
-    log.error("Couldn't attach", err)
-    return {}
-  }
-
-  p := process {
-    id = pid,
-    term_on_end = false,
-  }
-  wait_on_signal(&p)
-
-  return p
-}
-
 stop_process :: proc(p: process) {
   if p.id != 0 {
     status: i32
-    if p.state == .running {
-      posix.kill(p.id, .SIGSTOP)
-      posix.waitpid(p.id, &status, nil)
-    }
+    if p.attached {
+      if p.state == .running {
+        posix.kill(p.id, .SIGSTOP)
+        posix.waitpid(p.id, &status, nil)
+      }
 
-    linux.ptrace_detach(.DETACH, linux.Pid(p.id), .SIGCONT)
-    posix.kill(p.id, .SIGCONT)
+      linux.ptrace_detach(.DETACH, linux.Pid(p.id), .SIGCONT)
+      posix.kill(p.id, .SIGCONT)
+    }
 
     if p.term_on_end {
       posix.kill(p.id, .SIGKILL)

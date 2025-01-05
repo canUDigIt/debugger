@@ -70,7 +70,12 @@ attach :: proc(args: []string) -> odb.process {
     return odb.attach(posix.pid_t(id))
   } else {
     // Passed in program name
-    return odb.launch(args[1])
+    process, err := odb.launch(args[1])
+    if err != .None {
+      log.error("Failed to launch ", args[1], err)
+      return {}
+    }
+    return process
   }
 }
 
