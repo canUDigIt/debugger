@@ -81,7 +81,7 @@ handle_command :: proc(p: ^odb.process, line: string) {
   args := strings.split(line, " ")
   cmd := args[0]
 
-  if strings.has_prefix(cmd, "continue") {
+  if strings.has_prefix("continue", cmd) {
     odb.resume(p)
     reason := odb.wait_on_signal(p)
     print_stop_reason(p^, reason)
