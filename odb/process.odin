@@ -26,6 +26,7 @@ process_error :: enum {
   Child_Failed,
   Zero_Pid,
   Attach_Failed,
+  Resume_Failed,
 }
 
 exit_with_error :: proc(p: ^pipe, prefix: string) {
@@ -124,12 +125,14 @@ stop_process :: proc(p: process) {
   }
 }
 
-resume :: proc(p: ^process) {
+resume :: proc(p: ^process) -> process_error {
   if err := linux.ptrace_cont(.CONT, linux.Pid(p.id), .SIGCONT); err != nil {
     fmt.eprintln("Couldn't resume")
-    return
+    return .Resume_Failed
   }
   p.state = .running
+
+  return .None
 }
 
 wait_on_signal :: proc(p: ^process) -> stop_reason {

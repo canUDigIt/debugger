@@ -41,10 +41,10 @@ get_process_status :: proc(pid: posix.pid_t) -> u8 {
 
 @(test)
 process_attach_sucess :: proc(t: ^testing.T) {
-  target, err := launch("./run_endlessly", false)
-  defer stop_process(target)
-  _, err = attach(target.id)
-  testing.expect(t, get_process_status(target.id) == 't')
+  p, err := launch("./run_endlessly", false)
+  defer stop_process(p)
+  _, err = attach(p.id)
+  testing.expect(t, get_process_status(p.id) == 't')
 }
 
 @(test)
@@ -52,4 +52,42 @@ process_attach_invalid_pid :: proc(t: ^testing.T) {
   p, err := attach(0)
 
   testing.expect(t, err == .Zero_Pid)
+}
+
+@(test)
+process_resume_success :: proc(t: ^testing.T) {
+  {
+    p, err := launch("./run_endlessly")
+    defer stop_process(p)
+
+    resume(&p)
+
+    status := get_process_status(p.id)
+    success := status == 'R' || status == 'S'
+    testing.expect(t, success)
+  }
+
+  {
+    target, err := launch("./run_endlessly", false)
+    defer stop_process(target)
+    p, err_attach := attach(target.id)
+
+    resume(&p)
+
+    status := get_process_status(p.id)
+    success := status == 'R' || status == 'S'
+    testing.expect(t, success)
+  }
+}
+
+@(test)
+process_resume_alread_terminated :: proc(t: ^testing.T) {
+  p, err := launch("./end_immediately")
+  defer stop_process(p)
+
+  resume(&p)
+  wait_on_signal(&p)
+
+  err_resume := resume(&p)
+  testing.expect(t, err_resume == .Resume_Failed)
 }
