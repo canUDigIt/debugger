@@ -62,18 +62,11 @@ debugger_handle_command :: proc(d: ^debug_context, line: cstring) {
 
     switch {
     case strings.has_prefix(args[1], "dump"):
-      debugger_dump_registers(d)
 
     case strings.has_prefix(args[1], "read"):
       if len(args) < 3 {
         fmt.println("register read command needs a register name to read")
         return
-      }
-      reg, err := register_get_register_from_name(args[2])
-      if err == nil {
-        fmt.println(register_get_register_value(d.pid, reg))
-      } else {
-        fmt.printfln("%s is not a register name", args[2])
       }
 
     case strings.has_prefix(args[1], "write"):
@@ -83,12 +76,6 @@ debugger_handle_command :: proc(d: ^debug_context, line: cstring) {
       }
       val, ok := strconv.parse_uint(args[3])
       if ok {
-        reg, err := register_get_register_from_name(args[2])
-        if err == nil {
-          register_set_register_value(d.pid, reg, val)
-        } else {
-          fmt.println("%s is not a register name", args[2])
-        }
       } else {
         fmt.printfln("write command requires a hexidecimal address.")
       }
@@ -150,10 +137,6 @@ debugger_set_breakpoint_at_address :: proc(d: ^debug_context, addr: uintptr) {
 }
 
 debugger_dump_registers :: proc(d: ^debug_context) {
-  for reg in Reg {
-    desc := g_register_descriptors[reg]
-    fmt.printfln("%s 0x%x", desc.name, register_get_register_value(d.pid, reg))
-  }
 }
 
 debugger_read_memory :: proc(d: ^debug_context, address: u64) -> (u64, linux.Errno) {
@@ -167,11 +150,10 @@ debugger_write_memory :: proc(d: ^debug_context, address, value: u64) -> (linux.
 }
 
 debugger_get_pc :: proc(d: ^debug_context) -> u64 {
-  return cast(u64)register_get_register_value(d.pid, .rip)
+  return 0
 }
 
 debugger_set_pc :: proc(d: ^debug_context, pc: u64) {
-  register_set_register_value(d.pid, .rip, cast(uint)pc)
 }
 
 debugger_wait_for_signal :: proc(d: ^debug_context) {
