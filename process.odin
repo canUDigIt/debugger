@@ -11,6 +11,7 @@ process :: struct {
   state: process_state,
   term_on_end: bool,
   attached: bool,
+  regs: registers,
 }
 
 process_state :: enum {
@@ -36,7 +37,7 @@ exit_with_error :: proc(p: ^pipe, prefix: string) {
   posix.exit(libc.EXIT_FAILURE)
 }
 
-launch :: proc(path: string, debug: bool = true) -> (process, process_error) {
+launch :: proc(path: string, debug: bool = true, stdout_replacement: Maybe(int) = nil) -> (process, process_error) {
   channel: pipe
   pipe_create(&channel, true)
 
@@ -47,6 +48,12 @@ launch :: proc(path: string, debug: bool = true) -> (process, process_error) {
   case 0:
     // child process
     pipe_close_read(&channel)
+
+    if stdout_replacement != nil {
+      if posix.dup2(posix.FD(stdout_replacement.(int)), posix.STDOUT_FILENO) < 0 {
+        exit_with_error(&channel, "stdout replacement failed")
+      }
+    }
 
     if debug && linux.ptrace_traceme(.TRACEME) != .NONE {
       exit_with_error(&channel, "Tracing failed")
@@ -76,7 +83,11 @@ launch :: proc(path: string, debug: bool = true) -> (process, process_error) {
     id = pid,
     term_on_end = true,
     attached = debug,
+    regs = {
+      data = {},
+    }
   }
+  p.regs.p = &p
 
   if debug {
     wait_on_signal(&p)
@@ -144,6 +155,11 @@ wait_on_signal :: proc(p: ^process) -> stop_reason {
 
   reason := interpret_wait_status(status)
   p.state = reason.reason
+
+  if p.attached && p.state == .stopped {
+    read_all_registers(p)
+  }
+
   return reason
 }
 
@@ -168,4 +184,52 @@ interpret_wait_status :: proc(wait_status: i32) -> stop_reason {
   }
 
   return r
+}
+
+read_all_registers :: proc(p: ^process) {
+  if linux.ptrace_getregs(.GETREGS, linux.Pid(p.id), &p.regs.data.regs) != .NONE {
+    panic("Couldn't read GPR registers")
+  }
+  if linux.ptrace_getfpregs(.GETFPREGS, linux.Pid(p.id), &p.regs.data.i387) != .NONE {
+    panic("Couldn't read FPR registers")
+  }
+
+  for i in 0..<8 {
+    id := int(reg.dr0) + i
+    info := register_info_by_id(reg(id))
+
+    data, err := linux.ptrace_peek(.PEEKUSER, linux.Pid(p.id), info.offset)
+    if err != .NONE {
+      panic("Couldn't read debug register.")
+    }
+
+    p.regs.data.u_debugreg[i] = u64(data)
+  }
+}
+
+write_user_area :: proc(p: ^process, offset: uintptr, data: uint) {
+  err := linux.ptrace_poke(.POKEUSER, linux.Pid(p.id), offset, data)
+  if err != .NONE {
+    buf: [1024]u8
+    msg := fmt.bprintfln(buf[:], "Couldn't write to user area: %v", err)
+    panic(msg)
+  }
+}
+
+write_fprs :: proc(p: ^process, fprs: ^linux.User_FP_Regs) {
+  err := linux.ptrace_setfpregs(.SETFPREGS, linux.Pid(p.id), fprs)
+  if err != .NONE {
+    buf: [1024]u8
+    msg := fmt.bprintfln(buf[:], "Coudln't write to floating point registers: %v", err)
+    panic(msg)
+  }
+}
+
+write_gprs :: proc(p: ^process, gprs: ^linux.User_Regs) {
+  err := linux.ptrace_setregs(.SETREGS, linux.Pid(p.id), gprs)
+  if err != .NONE {
+    buf: [1024]u8
+    msg := fmt.bprintfln(buf[:], "Couldn't write to general registers: %v", err)
+    panic(msg)
+  }
 }
