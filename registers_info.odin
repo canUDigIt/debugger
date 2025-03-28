@@ -1,4 +1,4 @@
-package debugger
+package odb
 
 import "core:sys/linux"
 import c "core:c/libc"

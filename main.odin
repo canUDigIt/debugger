@@ -1,4 +1,4 @@
-package debugger
+package odb
 
 import c "core:c/libc"
 import "core:fmt"
@@ -6,7 +6,6 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:sys/posix"
-import "./odb"
 
 history_entry :: struct {
   line: cstring,
@@ -26,13 +25,13 @@ main :: proc() {
     posix.exit(1)
   }
 
-  p := attach(os.args[:])
-  defer odb.stop_process(p)
+  p := handle_args(os.args[:])
+  defer stop_process(p)
 
   main_loop(&p)
 }
 
-main_loop :: proc(p: ^odb.process) {
+main_loop :: proc(p: ^process) {
   for {
     line := readline("odb> ")
     if line == nil {
@@ -56,7 +55,7 @@ main_loop :: proc(p: ^odb.process) {
   }
 }
 
-attach :: proc(args: []string) -> odb.process {
+handle_args :: proc(args: []string) -> process {
   if len(args) == 3 && args[1] == "-p" {
     // Passed in PID
     id, ok := strconv.parse_int(args[2])
@@ -65,10 +64,10 @@ attach :: proc(args: []string) -> odb.process {
       return {}
     }
 
-    return odb.attach(posix.pid_t(id)) or_else odb.process{}
+    return attach(posix.pid_t(id)) or_else process{}
   } else {
     // Passed in program name
-    process, err := odb.launch(args[1])
+    process, err := launch(args[1])
     if err != .None {
       fmt.eprintln("Failed to launch ", args[1], err)
       return {}
@@ -77,20 +76,20 @@ attach :: proc(args: []string) -> odb.process {
   }
 }
 
-handle_command :: proc(p: ^odb.process, line: string) {
+handle_command :: proc(p: ^process, line: string) {
   args := strings.split(line, " ")
   cmd := args[0]
 
   if strings.has_prefix("continue", cmd) {
-    odb.resume(p)
-    reason := odb.wait_on_signal(p)
+    resume(p)
+    reason := wait_on_signal(p)
     print_stop_reason(p^, reason)
   } else {
     fmt.eprintln("Unknown command")
   }
 }
 
-print_stop_reason :: proc(p: odb.process, r: odb.stop_reason) {
+print_stop_reason :: proc(p: process, r: stop_reason) {
   switch r.reason {
     case .exited:
       fmt.eprintfln("Process %v exited with status %v", p.id, r.info)
