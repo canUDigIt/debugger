@@ -9,6 +9,7 @@ import "core:sys/posix"
 
 history_entry :: struct {
   line: cstring,
+  timestamp: cstring,
   data: rawptr
 }
 foreign import libedit "system:libedit.so"
