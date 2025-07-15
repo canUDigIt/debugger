@@ -21,21 +21,29 @@ register_write :: proc(p: ^process, info: reg_info, value: $T, commit: bool = tr
       }
     }
   } else {
-    bytes := mem.byte_slice(rawptr(&p.data), size_of(user))
-    data_ptr: [^]byte = &bytes[0]
+    // Get the user data as a byte slice
+    user_bytes := mem.byte_slice(rawptr(&p.data), size_of(user))
 
     if size_of(value) <= info.size {
+      // Convert value to bytes, expanding to u128 to handle all register sizes
       wide := u128(value)
       val_bytes := mem.any_to_bytes(wide)
-      val_ptr: [^]byte = &val_bytes[0]
-      mem.copy(&data_ptr[info.offset], val_ptr, int(info.size))
+
+      // Get the target slice for the register
+      target_slice := user_bytes[info.offset:][:info.size]
+
+      // Copy the value bytes to the target register location
+      copy(target_slice, val_bytes[:info.size])
     } else {
       panic("register_write called with mismatched register and value sizes")
     }
 
     if commit {
+      // Write the modified data back to the process
       aligned_offset := info.offset &~ 0b111
-      write_user_area(p, aligned_offset, mem.reinterpret_copy(uint, &data_ptr[aligned_offset]))
+      aligned_slice := user_bytes[aligned_offset:][:8]  // 8 bytes for uint alignment
+      aligned_value := mem.reinterpret_copy(uint, raw_data(aligned_slice))
+      write_user_area(p, aligned_offset, aligned_value)
     }
   }
 }
