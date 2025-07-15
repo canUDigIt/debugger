@@ -89,5 +89,50 @@ process_resume_already_terminated :: proc(t: ^testing.T) {
   wait_on_signal(&p)
 
   err_resume := resume(&p)
-  testing.expect(t, err_resume == .Resume_Failed)
+  testing.expect_value(t, err_resume, process_error.Resume_Failed)
+}
+
+@(test)
+write_register_works :: proc(t: ^testing.T) {
+  channel := pipe{}
+  pipe_create(&channel, false)
+  defer pipe_destroy(&channel)
+
+  p, err := launch("./tests/reg_write", true, channel[write_fd])
+  defer pipe_close_write(&channel)
+
+  resume(&p)
+  wait_on_signal(&p)
+
+  register_write_by_id(&p, .rsi, 0xcafecafe)
+
+  resume(&p)
+  wait_on_signal(&p)
+
+  output := pipe_read(channel)
+  testing.expect_value(t, string(output), "0xcafecafe")
+  delete(output)
+
+  register_write_by_id(&p, .xmm0, 42.24)
+
+  resume(&p)
+  wait_on_signal(&p)
+
+  output = pipe_read(channel)
+  testing.expect_value(t, string(output), "42.24")
+  delete(output)
+
+  register_write_by_id(&p, .st0, 42.24)
+  register_write_by_id(&p, .fsw, 0b0011100000000000)
+  register_write_by_id(&p, .ftw, 0b0011111111111111)
+
+  resume(&p)
+  wait_on_signal(&p)
+
+  output = pipe_read(channel)
+  testing.expect_value(t, string(output), "42.24")
+  delete(output)
+
+  resume(&p)
+  wait_on_signal(&p)
 }

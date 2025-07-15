@@ -3,24 +3,20 @@ package odb
 import "core:fmt"
 import "core:slice"
 import "core:sys/posix"
+import "core:sys/linux"
 
 pipe :: [2]posix.FD
 read_fd :: 0
 write_fd :: 1
 
 pipe_create :: proc(p: ^pipe, close_on_exec: bool) {
-  if posix.pipe(p) == .FAIL {
-    fmt.eprintln("Failed to create pipe: ", posix.strerror(posix.errno()))
+  flags: linux.Open_Flags
+  if close_on_exec {
+    flags = {.CLOEXEC}
   }
 
-  if close_on_exec {
-    flags := posix.fcntl(p[read_fd], .GETFD)
-    flags |= posix.FD_CLOEXEC
-    posix.fcntl(p[read_fd], .SETFD, flags)
-
-    flags = posix.fcntl(p[write_fd], .GETFD)
-    flags |= posix.FD_CLOEXEC
-    posix.fcntl(p[write_fd], .SETFD, flags)
+  if linux.pipe2(transmute(^[2]linux.Fd)p, flags) != .NONE {
+    fmt.eprintln("Failed to create pipe: ", posix.strerror(posix.errno()))
   }
 }
 
